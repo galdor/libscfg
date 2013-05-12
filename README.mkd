@@ -1,0 +1,12 @@
+# libscfg
+
+## Description
+
+`libscfg` is a small C library for a very simple configuration file format.
+
+More information can be found on <http://wandrian.net/libscfg.html>.
+
+## Contact
+
+If you have suggestions, or if you have found a bug, send me a message via
+Github or mail me at <khaelin@gmail.com>.
