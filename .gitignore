@@ -1,0 +1,6 @@
+libscfg.a
+
+utils/scfg-dump
+utils/scfg-get
+
+src/*.o
