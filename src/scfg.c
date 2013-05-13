@@ -575,6 +575,7 @@ cfg_ctx_read_element(struct cfg_ctx *ctx) {
             goto error;
 
         free(identifier);
+        identifier = NULL;
 
         /* Skip '{' */
         ctx->buf++;
@@ -615,6 +616,7 @@ cfg_ctx_read_element(struct cfg_ctx *ctx) {
             ctx->cfg->entry_hook(entry->key, entry->type, entry->value);
 
         free(identifier);
+        identifier = NULL;
     } else {
         cfg_ctx_parse_error(ctx, "invalid character after identifier");
         goto error;
@@ -623,7 +625,8 @@ cfg_ctx_read_element(struct cfg_ctx *ctx) {
     return 0;
 
 error:
-    free(identifier);
+    if (identifier)
+        free(identifier);
     return -1;
 }
 
