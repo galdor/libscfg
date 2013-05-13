@@ -323,6 +323,7 @@ cfg_read_file(const char *path) {
     fd = open(path, O_RDONLY);
     if (fd == -1) {
         cfg_set_error("cannot open file %s: %m", path);
+        return NULL;
     }
 
     if (stat(path, &st) == -1) {
