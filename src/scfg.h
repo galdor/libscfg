@@ -19,6 +19,13 @@
 
 #include <stdbool.h>
 
+struct cfg_memory_allocator {
+   void *(*malloc)(size_t sz);
+   void (*free)(void *ptr);
+   void *(*calloc)(size_t nb, size_t sz);
+   void *(*realloc)(void *ptr, size_t sz);
+};
+
 enum cfg_type {
     CFG_TYPE_UNKNOWN,
 
@@ -43,6 +50,8 @@ typedef void (*cfg_parse_error_hook)(const char *error,
 const char *cfg_get_error();
 void cfg_set_error(const char *fmt, ...)
     __attribute__((format(printf, 1, 2)));
+
+void cfg_set_memory_allocator(struct cfg_memory_allocator *allocator);
 
 struct cfg *cfg_new();
 void cfg_delete(struct cfg *cfg);

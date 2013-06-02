@@ -73,6 +73,11 @@ struct cfg_iterator {
     const struct cfg_entry *entry;
 };
 
+static void *cfg_malloc(size_t);
+static void cfg_free(void *);
+static void *cfg_calloc(size_t, size_t);
+static void *cfg_realloc(void *, size_t);
+
 static struct cfg_entry *cfg_entry_new();
 static void cfg_entry_delete(struct cfg_entry *);
 static int cfg_entry_cmp(const void *, const void *);
@@ -107,6 +112,13 @@ static bool cfg_key_matches_prefix(const char *key, const char *prefix);
 static bool char_is_oneof(int, const char *);
 static const char *str_search_oneof(const char *, const char *);
 
+static struct cfg_memory_allocator cfg_allocator = {
+    .malloc = malloc,
+    .free = free,
+    .calloc = calloc,
+    .realloc = realloc
+};
+
 __thread static char cfg_error_buf[CFG_ERROR_BUFSZ];
 
 const char *
@@ -134,11 +146,16 @@ cfg_set_error(const char *fmt, ...) {
     cfg_error_buf[ret] = '\0';
 }
 
+void
+cfg_set_memory_allocator(struct cfg_memory_allocator *allocator) {
+    cfg_allocator = *allocator;
+}
+
 struct cfg *
 cfg_new() {
     struct cfg *cfg;
 
-    cfg = malloc(sizeof(struct cfg));
+    cfg = cfg_malloc(sizeof(struct cfg));
     if (!cfg) {
         cfg_set_error("cannot allocate cfg: %m");
         return NULL;
@@ -156,8 +173,8 @@ cfg_delete(struct cfg *cfg) {
 
     for (int i = 0; i < cfg->nb_entries; i++)
         cfg_entry_delete(cfg->entries[i]);
-    free(cfg->entries);
-    free(cfg);
+    cfg_free(cfg->entries);
+    cfg_free(cfg);
 }
 
 void
@@ -182,7 +199,7 @@ cfg_load(struct cfg *cfg, const char *path) {
     }
 
     if (cfg_ctx_initialize(&ctx) == -1) {
-        free(content);
+        cfg_free(content);
         cfg_delete(cfg);
         return -1;
     }
@@ -196,14 +213,14 @@ cfg_load(struct cfg *cfg, const char *path) {
         if (!ctx.did_abort)
             cfg_set_error("syntax error");
 
-        free(content);
+        cfg_free(content);
         cfg_ctx_free(&ctx);
         cfg_delete(cfg);
         return -1;
     }
 
     cfg_ctx_free(&ctx);
-    free(content);
+    cfg_free(content);
 
     qsort(cfg->entries, (size_t)cfg->nb_entries, sizeof(struct cfg_entry *),
           cfg_entry_cmp);
@@ -280,7 +297,7 @@ struct cfg_iterator *
 cfg_iterate(const struct cfg *cfg, const char *prefix) {
     struct cfg_iterator *it;
 
-    it = malloc(sizeof(struct cfg_iterator));
+    it = cfg_malloc(sizeof(struct cfg_iterator));
     if (!it) {
         cfg_set_error("cannot allocate iterator: %m");
         return NULL;
@@ -350,7 +367,7 @@ cfg_iterator_get_value(struct cfg_iterator *it, const char **key,
 
 void
 cfg_iterator_delete(struct cfg_iterator *it) {
-    free(it);
+    cfg_free(it);
 }
 
 void
@@ -365,11 +382,31 @@ cfg_parse_error_stderr(const char *error,
     fprintf(stderr, "^\n\n");
 }
 
+static void *
+cfg_malloc(size_t sz) {
+    return cfg_allocator.malloc(sz);
+}
+
+static void
+cfg_free(void *ptr) {
+    cfg_allocator.free(ptr);
+}
+
+static void *
+cfg_calloc(size_t nb, size_t sz) {
+    return cfg_allocator.calloc(nb, sz);
+}
+
+static void *
+cfg_realloc(void *ptr, size_t sz) {
+    return cfg_allocator.realloc(ptr, sz);
+}
+
 static struct cfg_entry *
 cfg_entry_new() {
     struct cfg_entry *entry;
 
-    entry = malloc(sizeof(struct cfg_entry));
+    entry = cfg_malloc(sizeof(struct cfg_entry));
     if (!entry) {
         cfg_set_error("cannot allocate cfg entry: %m");
         return NULL;
@@ -384,10 +421,10 @@ cfg_entry_delete(struct cfg_entry *entry) {
     if (!entry)
         return;
 
-    free(entry->key);
+    cfg_free(entry->key);
     if (entry->type == CFG_TYPE_STRING)
-        free(entry->value.s);
-    free(entry);
+        cfg_free(entry->value.s);
+    cfg_free(entry);
 }
 
 static int
@@ -419,9 +456,9 @@ cfg_read_file(const char *path) {
         return NULL;
     }
 
-    sz = (size_t)st.st_size + 1;
+    sz = (size_t)st.st_size;
 
-    content = malloc(sz + 1);
+    content = cfg_malloc(sz + 1);
     if (!content) {
         cfg_set_error("cannot allocate %zu bytes: %m", sz);
         close(fd);
@@ -439,7 +476,7 @@ cfg_read_file(const char *path) {
 
             cfg_set_error("error while reading %s: %m", path);
             close(fd);
-            free(content);
+            cfg_free(content);
             return NULL;
         }
 
@@ -461,7 +498,7 @@ cfg_add_entry(struct cfg *cfg, struct cfg_entry *entry) {
 
     if (!cfg->entries) {
         cfg->entries_sz = 8;
-        cfg->entries = calloc((size_t)cfg->entries_sz, entry_len);
+        cfg->entries = cfg_calloc((size_t)cfg->entries_sz, entry_len);
         if (!cfg->entries) {
             cfg_set_error("cannot allocate entry array: %m");
             return -1;
@@ -471,7 +508,7 @@ cfg_add_entry(struct cfg *cfg, struct cfg_entry *entry) {
         int nsz;
 
         nsz = cfg->entries_sz * 2;
-        nentries = realloc(cfg->entries, (size_t)nsz * entry_len);
+        nentries = cfg_realloc(cfg->entries, (size_t)nsz * entry_len);
         if (!nentries) {
             cfg_set_error("cannot reallocate entry array: %m");
             return -1;
@@ -512,7 +549,7 @@ cfg_ctx_initialize(struct cfg_ctx *ctx) {
     ctx->colno = 1;
 
     ctx->prefix_sz = 16;
-    ctx->prefix = malloc(ctx->prefix_sz);
+    ctx->prefix = cfg_malloc(ctx->prefix_sz);
     if (!ctx->prefix) {
         cfg_set_error("cannot allocate prefix: %m");
         return -1;
@@ -527,7 +564,7 @@ cfg_ctx_free(struct cfg_ctx *ctx) {
     if (!ctx)
         return;
 
-    free(ctx->prefix);
+    cfg_free(ctx->prefix);
 }
 
 static void
@@ -662,7 +699,7 @@ cfg_ctx_read_element(struct cfg_ctx *ctx) {
         if (cfg_ctx_prefix_push(ctx, identifier) == -1)
             goto error;
 
-        free(identifier);
+        cfg_free(identifier);
         identifier = NULL;
 
         /* Skip '{' */
@@ -703,7 +740,7 @@ cfg_ctx_read_element(struct cfg_ctx *ctx) {
         if (ctx->cfg->entry_hook)
             ctx->cfg->entry_hook(entry->key, entry->type, entry->value);
 
-        free(identifier);
+        cfg_free(identifier);
         identifier = NULL;
     } else {
         cfg_ctx_parse_error(ctx, "invalid character after identifier");
@@ -714,7 +751,7 @@ cfg_ctx_read_element(struct cfg_ctx *ctx) {
 
 error:
     if (identifier)
-        free(identifier);
+        cfg_free(identifier);
     return -1;
 }
 
@@ -806,7 +843,7 @@ cfg_ctx_read_string(struct cfg_ctx *ctx) {
 
     sz = 16;
     len = 0;
-    buf = malloc(sz);
+    buf = cfg_malloc(sz);
     if (!buf) {
         cfg_ctx_abort(ctx, "cannot allocate string: %m");
         return NULL;
@@ -821,7 +858,7 @@ cfg_ctx_read_string(struct cfg_ctx *ctx) {
             size_t nsz;                                                    \
                                                                            \
             nsz = sz * 2;                                                  \
-            nbuf = realloc(buf, nsz);                                      \
+            nbuf = cfg_realloc(buf, nsz);                                  \
             if (!nbuf) {                                                   \
                 cfg_ctx_abort(ctx, "cannot reallocate string: %m");        \
                 goto error;                                                \
@@ -893,7 +930,7 @@ cfg_ctx_read_string(struct cfg_ctx *ctx) {
 #undef CFG_APPEND_CHAR
 
 error:
-    free(buf);
+    cfg_free(buf);
     return NULL;
 }
 
@@ -905,12 +942,15 @@ cfg_ctx_read_identifier(struct cfg_ctx *ctx) {
         if (*ptr == ' ' || *ptr == ':'
             || *ptr == '\r' || *ptr == '\n') {
             char *identifier;
+            size_t identifier_len;
 
-            identifier = strndup(ctx->buf, (size_t)(ptr - ctx->buf));
+            identifier_len = (size_t)(ptr - ctx->buf);
+            identifier = cfg_malloc(identifier_len + 1);
             if (!identifier) {
                 cfg_ctx_abort(ctx, "cannot allocate identifier: %m");
                 return NULL;
             }
+            memcpy(identifier, ctx->buf, identifier_len);
 
             ctx->colno += ptr - ctx->buf;
             ctx->buf = ptr;
@@ -949,7 +989,7 @@ cfg_ctx_prefix_push(struct cfg_ctx *ctx, const char *name) {
         if (nsz <= ctx->prefix_sz + len + 1)
             nsz = nsz + ctx->prefix_sz + len + 2;
 
-        nprefix = realloc(ctx->prefix, nsz);
+        nprefix = cfg_realloc(ctx->prefix, nsz);
         if (!nprefix) {
             cfg_ctx_abort(ctx, "cannot reallocate prefix: %m");
             return -1;
@@ -990,7 +1030,7 @@ cfg_ctx_make_key(struct cfg_ctx *ctx, char *name) {
     size_t sz;
 
     sz = ctx->prefix_len + 1 + strlen(name) + 1;
-    key = malloc(sz);
+    key = cfg_malloc(sz);
     if (!key) {
         cfg_ctx_abort(ctx, "cannot allocate key: %m");
         return NULL;
