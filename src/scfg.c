@@ -951,6 +951,7 @@ cfg_ctx_read_identifier(struct cfg_ctx *ctx) {
                 return NULL;
             }
             memcpy(identifier, ctx->buf, identifier_len);
+            identifier[identifier_len] = '\0';
 
             ctx->colno += ptr - ctx->buf;
             ctx->buf = ptr;
