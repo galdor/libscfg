@@ -119,7 +119,7 @@ static struct cfg_memory_allocator cfg_allocator = {
     .realloc = realloc
 };
 
-__thread static char cfg_error_buf[CFG_ERROR_BUFSZ];
+static __thread char cfg_error_buf[CFG_ERROR_BUFSZ];
 
 const char *
 cfg_get_error() {
