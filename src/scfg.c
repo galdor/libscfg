@@ -65,6 +65,14 @@ struct cfg {
     cfg_parse_error_hook parse_error_hook;
 };
 
+struct cfg_iterator {
+    const struct cfg *cfg;
+    const char *prefix;
+
+    int entry_index;
+    const struct cfg_entry *entry;
+};
+
 static struct cfg_entry *cfg_entry_new();
 static void cfg_entry_delete(struct cfg_entry *);
 static int cfg_entry_cmp(const void *, const void *);
@@ -93,6 +101,8 @@ static char *cfg_ctx_read_identifier(struct cfg_ctx *);
 static int cfg_ctx_prefix_push(struct cfg_ctx *, const char *);
 static void cfg_ctx_prefix_pop(struct cfg_ctx *);
 static char *cfg_ctx_make_key(struct cfg_ctx *, char *);
+
+static bool cfg_key_matches_prefix(const char *key, const char *prefix);
 
 static bool char_is_oneof(int, const char *);
 static const char *str_search_oneof(const char *, const char *);
@@ -264,6 +274,83 @@ cfg_get_bool(struct cfg *cfg, const char *key, bool *value) {
 
     *value = entry->value.b;
     return 1;
+}
+
+struct cfg_iterator *
+cfg_iterate(const struct cfg *cfg, const char *prefix) {
+    struct cfg_iterator *it;
+
+    it = malloc(sizeof(struct cfg_iterator));
+    if (!it) {
+        cfg_set_error("cannot allocate iterator: %m");
+        return NULL;
+    }
+
+    memset(it, 0, sizeof(struct cfg_iterator));
+
+    it->cfg = cfg;
+    it->prefix = prefix;
+
+    return it;
+}
+
+bool
+cfg_iterator_get_value(struct cfg_iterator *it, const char **key,
+                       enum cfg_type *type, union cfg_value *value) {
+    const struct cfg *cfg;
+
+    cfg = it->cfg;
+
+    if (it->entry) {
+        struct cfg_entry *entry;
+
+        /* Get the next entry matching the prefix */
+
+        it->entry_index++;
+        if (it->entry_index >= cfg->nb_entries)
+            return false;
+
+        entry = cfg->entries[it->entry_index];
+        if (!cfg_key_matches_prefix(entry->key, it->prefix)) {
+            it->entry_index = 0;
+            it->entry = NULL;
+            return false;
+        }
+
+        it->entry = entry;
+    } else {
+        bool found;
+
+        /* Get the first entry matching the prefix */
+
+        found = false;
+        for (int i = 0; i < cfg->nb_entries; i++) {
+            struct cfg_entry *entry;
+
+            entry = cfg->entries[i];
+
+            if (cfg_key_matches_prefix(entry->key, it->prefix)) {
+                it->entry_index = i;
+                it->entry = entry;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found)
+            return false;
+    }
+
+    *key = it->entry->key;
+    *type = it->entry->type;
+    *value = it->entry->value;
+
+    return true;
+}
+
+void
+cfg_iterator_delete(struct cfg_iterator *it) {
+    free(it);
 }
 
 void
@@ -916,6 +1003,19 @@ cfg_ctx_make_key(struct cfg_ctx *ctx, char *name) {
     }
 
     return key;
+}
+
+static bool
+cfg_key_matches_prefix(const char *key, const char *prefix) {
+    size_t key_len, prefix_len;
+
+    key_len = strlen(key);
+    prefix_len = strlen(prefix);
+
+    if (prefix_len > key_len)
+        return false;
+
+    return memcmp(key, prefix, prefix_len) == 0;
 }
 
 static bool

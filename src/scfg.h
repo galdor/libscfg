@@ -57,6 +57,11 @@ int cfg_get_string(struct cfg *cfg, const char *key, const char **value);
 int cfg_get_integer(struct cfg *cfg, const char *key, int *value);
 int cfg_get_bool(struct cfg *cfg, const char *key, bool *value);
 
+struct cfg_iterator *cfg_iterate(const struct cfg *cfg, const char *prefix);
+bool cfg_iterator_get_value(struct cfg_iterator *it, const char **key,
+                            enum cfg_type *type, union cfg_value *value);
+void cfg_iterator_delete(struct cfg_iterator *it);
+
 void cfg_parse_error_stderr(const char *error,
                             const char *filename, const char *line,
                             int lineno, int colno);

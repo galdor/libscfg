@@ -28,8 +28,10 @@ static void usage(const char *, int);
 
 int
 main(int argc, char **argv) {
-    const char *path, *key;
+    const char *path, *prefix;
     struct cfg *cfg;
+    struct cfg_iterator *it;
+    const char *key;
     enum cfg_type type;
     union cfg_value value;
     int opt;
@@ -52,7 +54,7 @@ main(int argc, char **argv) {
 
     argv += optind;
     path = argv[0];
-    key = argv[1];
+    prefix = argv[1];
 
     cfg = cfg_new();
     if (!cfg)
@@ -62,41 +64,42 @@ main(int argc, char **argv) {
     if (cfg_load(cfg, path) == -1)
         die("cannot load configuration from %s: %s", path, cfg_get_error());
 
-    if (cfg_get_value(cfg, key, &type, &value) == 0) {
-        fprintf(stderr, "no entry found with key '%s'\n", key);
-        cfg_delete(cfg);
-        return 1;
+    it = cfg_iterate(cfg, prefix);
+    if (!it)
+        die("cannot iterate on configuration: %s", cfg_get_error());
+
+    while (cfg_iterator_get_value(it, &key, &type, &value)) {
+        printf("%-40s ", key);
+
+        switch (type) {
+            case CFG_TYPE_STRING:
+                printf("\"%s\"", value.s);
+                break;
+
+            case CFG_TYPE_INT32:
+                printf("%i", value.i32);
+                break;
+
+            case CFG_TYPE_BOOL:
+                printf("%s", value.b ? "true" : "false");
+                break;
+
+            case CFG_TYPE_UNKNOWN:
+                printf("<unknown>");
+                break;
+        }
+
+        putchar('\n');
     }
 
-    printf("%s: ", key);
-
-    switch (type) {
-        case CFG_TYPE_STRING:
-            printf("%s", value.s);
-            break;
-
-        case CFG_TYPE_INT32:
-            printf("%i", value.i32);
-            break;
-
-        case CFG_TYPE_BOOL:
-            printf("%s", value.b ? "true" : "false");
-            break;
-
-        case CFG_TYPE_UNKNOWN:
-            printf("<unknown>");
-            break;
-    }
-
-    putchar('\n');
-
+    cfg_iterator_delete(it);
     cfg_delete(cfg);
     return 0;
 }
 
 static void
 usage(const char *argv0, int exit_code) {
-    printf("Usage: %s [-h] <file> <key>\n"
+    printf("Usage: %s [-h] <file> <prefix>\n"
             "\n"
             "Options:\n"
             "  -h         display help\n",

@@ -75,7 +75,7 @@ usage(const char *argv0, int exit_code) {
     exit(exit_code);
 }
 
-void
+static void
 die(const char *fmt, ...) {
     va_list ap;
 
